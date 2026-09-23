@@ -65,9 +65,9 @@ def plot_latency_breakdown():
     
     output_dir = os.path.join(project_root, 'testResult')
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, 'latency_breakdown.png')
+    output_path = os.path.join(output_dir, 'latency_breakdown.pdf')
     
-    plt.savefig(output_path)
+    plt.savefig(output_path, format='pdf', bbox_inches='tight')
     print(f'Plot saved as {output_path}')
 
 if __name__ == '__main__':

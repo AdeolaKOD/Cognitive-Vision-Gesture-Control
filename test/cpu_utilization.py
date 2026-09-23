@@ -58,9 +58,9 @@ def plot_cpu_utilization(duration_seconds=60, sample_interval=0.5):
     
     output_dir = os.path.join(project_root, 'testResult')
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, 'cpu_utilization.png')
+    output_path = os.path.join(output_dir, 'cpu_utilization.pdf')
     
-    plt.savefig(output_path)
+    plt.savefig(output_path, format='pdf', bbox_inches='tight')
     print(f'Plot saved as {output_path}')
 
 if __name__ == '__main__':

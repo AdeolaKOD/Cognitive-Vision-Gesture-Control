@@ -61,9 +61,9 @@ def plot_transfer_function():
     
     output_dir = os.path.join(project_root, 'testResult')
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, 'transfer_function.png')
+    output_path = os.path.join(output_dir, 'transfer_function.pdf')
     
-    plt.savefig(output_path)
+    plt.savefig(output_path, format='pdf', bbox_inches='tight')
     print(f'Plot saved as {output_path}')
 
 if __name__ == '__main__':
