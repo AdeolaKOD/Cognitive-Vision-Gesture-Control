@@ -1,0 +1,8 @@
+opencv-python
+numpy
+mediapipe==0.10.11
+PyAutoGUI
+comtypes
+pycaw
+screen-brightness-control
+pyinstaller
