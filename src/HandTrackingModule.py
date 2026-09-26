@@ -1,17 +1,24 @@
 # Import OpenCV for image processing and drawing
 import cv2
+
 # Import MediaPipe for hand tracking machine learning models
 import mediapipe as mp
-# PyInstaller workaround: explicitly import solutions so they are bundled
-import mediapipe.python.solutions.hands
-import mediapipe.python.solutions.drawing_utils
+
+# Explicitly import the submodules so IDEs and PyInstaller can resolve them reliably
+from mediapipe.python.solutions import hands as mp_hands
+from mediapipe.python.solutions import drawing_utils as mp_drawing
+
 # Import math for calculating distances between points
 import math
+
+
 
 # Define a class for detecting and tracking hands
 class HandDetector:
     # Initialize the hand detector with MediaPipe parameters
-    def __init__(self, mode=False, maxHands=2, modelComplexity=1, detectionCon=0.5, trackCon=0.5):
+    def __init__(
+        self, mode=False, maxHands=2, modelComplexity=1, detectionCon=0.5, trackCon=0.5
+    ):
         # Static image mode (False means tracking is prioritized)
         self.mode = mode
         # Maximum number of hands to detect
@@ -24,12 +31,17 @@ class HandDetector:
         self.trackCon = trackCon
 
         # Access MediaPipe's hand solution
-        self.mpHands = mp.solutions.hands
+        self.mpHands = mp.solutions.hands # pyright: ignore[reportAttributeAccessIssue]
         # Initialize the Hands object with our parameters
-        self.hands = self.mpHands.Hands(self.mode, self.maxHands, self.modelComplexity,
-                                        self.detectionCon, self.trackCon)
+        self.hands = self.mpHands.Hands(
+            self.mode,
+            self.maxHands,
+            self.modelComplexity,
+            self.detectionCon,
+            self.trackCon,
+        )
         # Access MediaPipe's drawing utilities for rendering landmarks
-        self.mpDraw = mp.solutions.drawing_utils
+        self.mpDraw = mp.solutions.drawing_utils # pyright: ignore[reportAttributeAccessIssue]
         # Landmark IDs for the tips of the 5 fingers (Thumb, Index, Middle, Ring, Pinky)
         self.tipIds = [4, 8, 12, 16, 20]
 
@@ -46,7 +58,9 @@ class HandDetector:
             for handLms in self.results.multi_hand_landmarks:
                 # If drawing is enabled, draw the connections and landmarks
                 if draw:
-                    self.mpDraw.draw_landmarks(img, handLms, self.mpHands.HAND_CONNECTIONS)
+                    self.mpDraw.draw_landmarks(
+                        img, handLms, self.mpHands.HAND_CONNECTIONS
+                    )
         # Return the modified image
         return img
 
@@ -84,14 +98,14 @@ class HandDetector:
                 h, w, c = img.shape
                 # Get the X-coordinate of the wrist (landmark 0) to determine hand position
                 wrist_x = int(handLms.landmark[0].x * w)
-                
+
                 # Since the image is horizontally flipped (mirror), left physical hand is on the left
                 # Assign hand type based on its position on the screen
                 if wrist_x < w // 2:
                     handType = "Left"  # Left side of screen = Media
                 else:
-                    handType = "Right" # Right side of screen = Volume
-                
+                    handType = "Right"  # Right side of screen = Volume
+
                 # Extract landmark coordinates for this hand
                 lmList = []
                 for id, lm in enumerate(handLms.landmark):
@@ -105,7 +119,7 @@ class HandDetector:
                         cv2.circle(img, (cx, cy), 5, (230, 230, 250), cv2.FILLED)
                 # Store the hand's type and its landmark list
                 hands_info.append({"type": handType, "lmList": lmList})
-                
+
             # Logic to handle overlapping hands or edge cases where spatial classification fails
             # If exactly two hands are detected
             if len(hands_info) == 2:
@@ -116,7 +130,7 @@ class HandDetector:
                 else:
                     hands_info[0]["type"] = "Right"
                     hands_info[1]["type"] = "Left"
-                    
+
         # Return the list containing dictionaries for each hand
         return hands_info
 
@@ -128,25 +142,25 @@ class HandDetector:
         if handType == "Right":
             # If the thumb tip is to the left of the joint below it (in a mirrored feed)
             if lmList[self.tipIds[0]][1] < lmList[self.tipIds[0] - 1][1]:
-                fingers.append(1) # Thumb is up/out
+                fingers.append(1)  # Thumb is up/out
             else:
-                fingers.append(0) # Thumb is down/in
-        else: # Left Hand
+                fingers.append(0)  # Thumb is down/in
+        else:  # Left Hand
             # If the thumb tip is to the right of the joint below it
             if lmList[self.tipIds[0]][1] > lmList[self.tipIds[0] - 1][1]:
                 fingers.append(1)
             else:
                 fingers.append(0)
-        
+
         # 4 Fingers Logic (Index, Middle, Ring, Pinky)
         for id in range(1, 5):
             # If the Y-coordinate of the tip is higher (smaller value) than the joint two segments down
             if lmList[self.tipIds[id]][2] < lmList[self.tipIds[id] - 2][2]:
-                fingers.append(1) # Finger is up
+                fingers.append(1)  # Finger is up
             else:
-                fingers.append(0) # Finger is down
+                fingers.append(0)  # Finger is down
         return fingers
-        
+
     # Helper method to find the distance between two specific landmarks
     def findDistance(self, p1, p2, img, draw=True, r=15, t=3):
         # Get coordinates for the first point
@@ -162,7 +176,7 @@ class HandDetector:
             cv2.circle(img, (x1, y1), r, (255, 0, 255), cv2.FILLED)
             cv2.circle(img, (x2, y2), r, (255, 0, 255), cv2.FILLED)
             cv2.circle(img, (cx, cy), r, (0, 0, 255), cv2.FILLED)
-        
+
         # Calculate the Euclidean distance (hypotenuse) between the points
         length = math.hypot(x2 - x1, y2 - y1)
         # Return the distance, the image, and the coordinates

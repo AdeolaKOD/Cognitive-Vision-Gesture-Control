@@ -14,7 +14,7 @@ class VolumeControl:
         # Get all audio output devices (speakers) connected to the system
         devices = AudioUtilities.GetSpeakers()
         # Access the endpoint volume interface of the audio devices
-        interface = devices.EndpointVolume
+        interface = devices.EndpointVolume # type: ignore
         # Store the interface in a class variable for later use
         self.volume = interface
         # Get the supported volume range (minimum, maximum, and step values) from the system
