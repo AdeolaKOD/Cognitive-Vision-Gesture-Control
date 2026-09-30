@@ -1,14 +1,15 @@
-import cv2
-import time
-import math
-import numpy as np
 import csv
+import io
+import math
 import os
+import time
+
+import cv2
 
 import HandTrackingModule as hd
-from VolumeControl import VolumeControl
 from BrightnessControl import BrightnessControl
 from MediaControl import MediaControl
+from VolumeControl import VolumeControl
 
 # Webcam capture resolution
 wCam, hCam = 640, 480
@@ -34,13 +35,18 @@ def main():
 
     # Telemetry output files
     os.makedirs("testResult", exist_ok=True)
-    latency_file = open("testResult/latency_data.csv", "w", newline="")
-    latency_writer = csv.writer(latency_file)
+    with open("../testResult/latency_data.csv", "r", newline="") as file:
+        latency_file = file.read()
+    latency_writer = io.StringIO(latency_file)
+    latency_writer = csv.writer(latency_writer)
     latency_writer.writerow(
         ["Acquisition", "Pre-processing", "Inference", "Logic", "Actuation"]
     )
 
-    transfer_file = open("testResult/transfer_data.csv", "w", newline="")
+    with open("../testResult/transfer_data.csv", "r", newline="") as file:
+        transfer_file_str = file.read()
+        transfer_files = io.StringIO(transfer_file_str)
+    transfer_file = transfer_files
     transfer_writer = csv.writer(transfer_file)
     transfer_writer.writerow(["Distance", "Percentage"])
 
@@ -208,7 +214,6 @@ def main():
 
     cap.release()
     cv2.destroyAllWindows()
-    latency_file.close()
     transfer_file.close()
 
 

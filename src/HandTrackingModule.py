@@ -1,16 +1,14 @@
 # Import OpenCV for image processing and drawing
-import cv2
-
-# Import MediaPipe for hand tracking machine learning models
-import mediapipe as mp
-
-# Explicitly import the submodules so IDEs and PyInstaller can resolve them reliably
-from mediapipe.python.solutions import hands as mp_hands
-from mediapipe.python.solutions import drawing_utils as mp_drawing
-
 # Import math for calculating distances between points
 import math
 
+import cv2
+import mediapipe as mp
+
+# Import MediaPipe for hand tracking machine learning models
+
+
+# Explicitly import the submodules so IDEs and PyInstaller can resolve them reliably
 
 
 # Define a class for detecting and tracking hands
@@ -31,7 +29,7 @@ class HandDetector:
         self.trackCon = trackCon
 
         # Access MediaPipe's hand solution
-        self.mpHands = mp.solutions.hands # pyright: ignore[reportAttributeAccessIssue]
+        self.mpHands = mp.solutions.hands  # pyright: ignore[reportAttributeAccessIssue]
         # Initialize the Hands object with our parameters
         self.hands = self.mpHands.Hands(
             self.mode,
@@ -41,7 +39,7 @@ class HandDetector:
             self.trackCon,
         )
         # Access MediaPipe's drawing utilities for rendering landmarks
-        self.mpDraw = mp.solutions.drawing_utils # pyright: ignore[reportAttributeAccessIssue]
+        self.mpDraw = mp.solutions.drawing_utils  # pyright: ignore[reportAttributeAccessIssue]
         # Landmark IDs for the tips of the 5 fingers (Thumb, Index, Middle, Ring, Pinky)
         self.tipIds = [4, 8, 12, 16, 20]
 
@@ -75,7 +73,7 @@ class HandDetector:
             # Enumerate through all 21 landmarks of the hand
             for id, lm in enumerate(myHand.landmark):
                 # Get the height, width, and channels of the image
-                h, w, c = img.shape
+                h, w, _c = img.shape
                 # Convert normalized coordinates to pixel coordinates
                 cx, cy = int(lm.x * w), int(lm.y * h)
                 # Append the landmark ID and its coordinates
@@ -95,7 +93,7 @@ class HandDetector:
             # Iterate through all detected hands
             for i, handLms in enumerate(self.results.multi_hand_landmarks):
                 # Get the dimensions of the image
-                h, w, c = img.shape
+                h, w, _c = img.shape
                 # Get the X-coordinate of the wrist (landmark 0) to determine hand position
                 wrist_x = int(handLms.landmark[0].x * w)
 
@@ -109,7 +107,7 @@ class HandDetector:
                 # Extract landmark coordinates for this hand
                 lmList = []
                 for id, lm in enumerate(handLms.landmark):
-                    h, w, c = img.shape
+                    h, w, _c = img.shape
                     # Convert normalized coordinates (0.0 - 1.0) to pixel coordinates
                     cx, cy = int(lm.x * w), int(lm.y * h)
                     # Append the ID and coordinates
