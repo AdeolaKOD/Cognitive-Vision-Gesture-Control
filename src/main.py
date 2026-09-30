@@ -75,8 +75,10 @@ def main():
                     x1, y1 = lmList[4][1], lmList[4][2]  # thumb tip
                     x2, y2 = lmList[8][1], lmList[8][2]  # index tip
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
-
-                    length = math.hypot(x2 - x1, y2 - y1)
+                    length = math.hypot(
+                        x2 - x1, y2 - y1
+                    )  # Calculate the Euclidean distance between Thumb and Index
+                    # Pass the data to the MediaControl module to process gestures
                     media_ctrl.process_gestures(img, length, cx, cy)
 
                 # Right hand: volume and brightness
@@ -84,7 +86,10 @@ def main():
                     x_thumb, y_thumb = lmList[4][1], lmList[4][2]
                     x_index, y_index = lmList[8][1], lmList[8][2]
                     x_wrist, y_wrist = lmList[0][1], lmList[0][2]
-                    x_mid_mcp, y_mid_mcp = lmList[9][1], lmList[9][2]  # middle finger base
+                    x_mid_mcp, y_mid_mcp = (
+                        lmList[9][1],
+                        lmList[9][2],
+                    )  # middle finger base
 
                     # Volume clutch: middle, ring and pinky down; thumb-index distance sets level
                     if (
