@@ -8,11 +8,11 @@ import urllib.request
 
 import cv2
 import mediapipe as mp
-import numpy as np
 
 # MediaPipe Tasks hand landmarker (the old mp.solutions API was removed in newer releases)
 from mediapipe.tasks.python import BaseOptions
 from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import drawing_utils as mp_drawing
 
 # The landmarker needs a model file. It ships in models/ and is bundled into the exe;
 # if it's missing it gets downloaded once from Google.
@@ -36,71 +36,27 @@ def _model_path():
     return path
 
 
-# Hand overlay style (colours are BGR)
-RING_COLOR = (255, 255, 255)  # Near joints: white ring
-RING_HOLE_COLOR = (150, 150, 150)  # Grey centre that makes the ring hollow
-BONE_COLOR = (225, 225, 225)  # Near bones: light grey
-FAR_COLOR = (45, 45, 45)  # Far joints and bones fade to this dark grey
-PALM_COLOR = (30, 30, 30)  # Thin dark V-shaped outline of the palm
+# Hand overlay colours (BGR), used with MediaPipe's built-in landmark drawing
+RING_COLOR = (255, 255, 255)  # MediaPipe draws a white border around every joint
+RING_HOLE_COLOR = (170, 170, 170)  # Grey joint centre
+BONE_COLOR = (215, 215, 215)  # Light grey finger lines
+PALM_COLOR = (40, 40, 40)  # Dark V from the wrist to the index and pinky bases
 
-# Finger chains from base to tip (thumb, index, middle, ring, pinky)
-FINGER_CHAINS = [
-    (1, 2, 3, 4),
-    (5, 6, 7, 8),
-    (9, 10, 11, 12),
-    (13, 14, 15, 16),
-    (17, 18, 19, 20),
-]
-# Lines across the knuckles and from the wrist to the thumb base
-KNUCKLE_LINKS = [(0, 1), (5, 9), (9, 13), (13, 17)]
-# Joint size relative to the hand size: tips biggest, knuckles and wrist smallest
-JOINT_SCALE = {0: 0.05, 1: 0.05, 5: 0.05, 9: 0.05, 13: 0.05, 17: 0.05}
-for _chain in FINGER_CHAINS:
-    for _joint, _scale in zip(_chain[1:], (0.08, 0.10, 0.13)):
-        JOINT_SCALE[_joint] = _scale
+HAND_CONNECTIONS = [(c.start, c.end) for c in vision.HandLandmarksConnections.HAND_CONNECTIONS]
+PALM_V = {(0, 5), (0, 17)}
+FINGERTIPS = {4, 8, 12, 16, 20}
 
-
-def _mix(far, near, t):
-    return tuple(int(f + (n - f) * t) for f, n in zip(far, near))
-
-
-def drawHandStyle(img, points, depths=None):
-    """Draw one hand like MediaPipe's demo: near joints are big white rings,
-    far ones shrink into dark dots, with a thin dark V across the palm.
-
-    points: 21 (x, y) pixel tuples. depths: 21 MediaPipe z values (negative is
-    closer to the camera than the wrist); without them every joint is drawn as near.
-    """
-    # Hand size (wrist to middle knuckle) keeps the overlay proportional at any distance
-    handSize = math.hypot(points[9][0] - points[0][0], points[9][1] - points[0][1])
-    lineW = max(1, int(handSize * 0.025))
-
-    # Nearness per joint in 0..1, measured in hand lengths so it works at any distance
-    if depths is None:
-        near = [1.0] * 21
-    else:
-        scale = max(handSize / img.shape[1], 1e-3)  # z shares the x scale
-        near = [min(1.0, max(0.0, 0.5 - z / scale * 1.5)) for z in depths]
-
-    # Bones first so the joints sit on top of them
-    for chain in FINGER_CHAINS:
-        for a, b in zip(chain, chain[1:]):
-            c = _mix(FAR_COLOR, BONE_COLOR, (near[a] + near[b]) / 2)
-            cv2.line(img, points[a], points[b], c, lineW, cv2.LINE_AA)
-    for a, b in KNUCKLE_LINKS:
-        c = _mix(FAR_COLOR, BONE_COLOR, (near[a] + near[b]) / 2)
-        cv2.line(img, points[a], points[b], c, lineW, cv2.LINE_AA)
-    cv2.polylines(img, [np.array([points[5], points[0], points[17]])], False,
-                  PALM_COLOR, lineW + 1, cv2.LINE_AA)
-
-    # Joints: size and colour follow nearness, and only near ones get the hollow centre
-    for i, base in JOINT_SCALE.items():
-        t = near[i]
-        r = max(2, int(handSize * base * (0.4 + 0.8 * t)))
-        cv2.circle(img, points[i], r, _mix(FAR_COLOR, RING_COLOR, t), cv2.FILLED, cv2.LINE_AA)
-        if t > 0.5 and r >= 5:
-            cv2.circle(img, points[i], max(1, r // 3), RING_HOLE_COLOR, cv2.FILLED, cv2.LINE_AA)
-    return img
+# Per-joint and per-line styles: bigger joints at the fingertips, thin dark palm V
+LANDMARK_STYLE = {
+    i: mp_drawing.DrawingSpec(color=RING_HOLE_COLOR, thickness=-1,
+                              circle_radius=6 if i in FINGERTIPS else 4)
+    for i in range(21)
+}
+CONNECTION_STYLE = {
+    c: mp_drawing.DrawingSpec(color=PALM_COLOR, thickness=1) if c in PALM_V
+    else mp_drawing.DrawingSpec(color=BONE_COLOR, thickness=2)
+    for c in HAND_CONNECTIONS
+}
 
 
 # Define a class for detecting and tracking hands
@@ -159,13 +115,15 @@ class HandDetector:
 
         # If hands are detected in the frame and drawing is enabled
         if draw and self.handLandmarks:
-            h, w, _c = img.shape
-            # Iterate through each detected hand
+            # Iterate through each detected hand and draw it with MediaPipe's own drawing utils
             for handLms in self.handLandmarks:
-                # Convert normalized landmarks to pixel points and draw the custom overlay
-                points = [(int(lm.x * w), int(lm.y * h)) for lm in handLms]
-                depths = [lm.z for lm in handLms]
-                drawHandStyle(img, points, depths)
+                mp_drawing.draw_landmarks(
+                    img,
+                    handLms,
+                    vision.HandLandmarksConnections.HAND_CONNECTIONS,
+                    LANDMARK_STYLE,
+                    CONNECTION_STYLE,
+                )
         # Return the modified image
         return img
 
