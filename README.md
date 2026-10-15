@@ -3,7 +3,7 @@
 # Cognitive Vision-Based Hand Gesture Recognition System
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-242836?style=flat-square&logo=python)](https://www.python.org/)
-[![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10.11-242836?style=flat-square)](https://google.github.io/mediapipe/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-Tasks_API-242836?style=flat-square)](https://google.github.io/mediapipe/)
 [![OpenCV](https://img.shields.io/badge/OpenCV-Python-242836?style=flat-square)](https://opencv.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-242836?style=flat-square)](LICENSE)
 

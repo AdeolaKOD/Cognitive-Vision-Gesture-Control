@@ -6,6 +6,7 @@ binaries = []
 hiddenimports = []
 tmp_ret = collect_all('mediapipe')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += [('models\\hand_landmarker.task', 'models')]
 
 
 a = Analysis(
