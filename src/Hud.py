@@ -7,14 +7,10 @@ FONT = cv2.FONT_HERSHEY_SIMPLEX
 TRACK_COLOR = (30, 30, 30)  # Dark translucent track behind each bar
 FILL_COLOR = BONE_COLOR  # Same light grey as the finger lines
 TEXT_COLOR = (255, 255, 255)
-SHADOW_COLOR = (20, 20, 20)
 
 
 def _text(img, text, org, scale, thickness=1):
-    # Soft shadow under white text keeps it readable on bright backgrounds
-    x, y = org
-    cv2.putText(img, text, (x + 1, y + 1), FONT, scale, SHADOW_COLOR, thickness + 1, cv2.LINE_AA)
-    cv2.putText(img, text, (x, y), FONT, scale, TEXT_COLOR, thickness, cv2.LINE_AA)
+    cv2.putText(img, text, org, FONT, scale, TEXT_COLOR, thickness, cv2.LINE_AA)
 
 
 def _centered_text(img, text, cx, y, scale, thickness=1):
@@ -37,7 +33,7 @@ def drawLevelBar(img, x, label, percent, top=150, bottom=400, width=26):
     cv2.rectangle(img, (x, level), (x + width - 1, min(bottom - 1, level + 2)), RING_COLOR, cv2.FILLED)
 
     _centered_text(img, label, cx, top - 14, 0.5, 1)
-    _centered_text(img, f"{int(percent)}%", cx, bottom + 32, 0.7, 2)
+    _centered_text(img, f"{int(percent)}%", cx, bottom + 30, 0.6, 1)
 
 
 def drawFps(img, fps):
