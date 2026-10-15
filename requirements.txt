@@ -1,6 +1,6 @@
 opencv-python
 numpy
-mediapipe==0.10.11
+mediapipe
 PyAutoGUI
 comtypes
 pycaw

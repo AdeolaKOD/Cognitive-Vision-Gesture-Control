@@ -1,15 +1,39 @@
 # Import OpenCV for image processing and drawing
 # Import math for calculating distances between points
 import math
+import os
+import sys
+import time
+import urllib.request
 
 import cv2
 import mediapipe as mp
 import numpy as np
 
-# Import MediaPipe for hand tracking machine learning models
+# MediaPipe Tasks hand landmarker (the old mp.solutions API was removed in newer releases)
+from mediapipe.tasks.python import BaseOptions
+from mediapipe.tasks.python import vision
+
+# The landmarker needs a model file. It ships in models/ and is bundled into the exe;
+# if it's missing it gets downloaded once from Google.
+MODEL_NAME = "hand_landmarker.task"
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/hand_landmarker/"
+    "hand_landmarker/float16/latest/hand_landmarker.task"
+)
 
 
-# Explicitly import the submodules so IDEs and PyInstaller can resolve them reliably
+def _model_path():
+    if getattr(sys, "frozen", False):
+        root = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(root, "models", MODEL_NAME)
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        print(f"Downloading hand landmark model to {path}")
+        urllib.request.urlretrieve(MODEL_URL, path)
+    return path
 
 
 # Hand overlay style (colours are BGR)
@@ -96,34 +120,51 @@ class HandDetector:
         # Minimum confidence threshold for tracking
         self.trackCon = trackCon
 
-        # Access MediaPipe's hand solution
-        self.mpHands = mp.solutions.hands  # pyright: ignore[reportAttributeAccessIssue]
-        # Initialize the Hands object with our parameters
-        self.hands = self.mpHands.Hands(
-            self.mode,
-            self.maxHands,
-            self.modelComplexity,
-            self.detectionCon,
-            self.trackCon,
+        # Static image mode runs detection on every frame; otherwise track across video frames
+        runningMode = vision.RunningMode.IMAGE if self.mode else vision.RunningMode.VIDEO
+        # modelComplexity has no equivalent in the Tasks API (one model), kept for compatibility
+        options = vision.HandLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=_model_path()),
+            running_mode=runningMode,
+            num_hands=self.maxHands,
+            min_hand_detection_confidence=self.detectionCon,
+            min_hand_presence_confidence=self.detectionCon,
+            min_tracking_confidence=self.trackCon,
         )
+        self.landmarker = vision.HandLandmarker.create_from_options(options)
+        # Video mode needs strictly increasing timestamps in milliseconds
+        self.lastTimestamp = -1
+        # Landmarks of every detected hand (each a list of 21 points with x, y, z)
+        self.handLandmarks = []
         # Landmark IDs for the tips of the 5 fingers (Thumb, Index, Middle, Ring, Pinky)
         self.tipIds = [4, 8, 12, 16, 20]
+
+    # Release the landmarker's native resources
+    def close(self):
+        self.landmarker.close()
 
     # Method to find and draw hands on a given image
     def findHands(self, img, draw=True):
         # MediaPipe requires RGB images, so convert BGR (OpenCV default) to RGB
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        mpImage = mp.Image(image_format=mp.ImageFormat.SRGB, data=imgRGB)
         # Process the image and get hand detection results
-        self.results = self.hands.process(imgRGB)
+        if self.mode:
+            self.results = self.landmarker.detect(mpImage)
+        else:
+            timestamp = max(int(time.monotonic() * 1000), self.lastTimestamp + 1)
+            self.lastTimestamp = timestamp
+            self.results = self.landmarker.detect_for_video(mpImage, timestamp)
+        self.handLandmarks = self.results.hand_landmarks
 
         # If hands are detected in the frame and drawing is enabled
-        if draw and self.results.multi_hand_landmarks:
+        if draw and self.handLandmarks:
             h, w, _c = img.shape
             # Iterate through each detected hand
-            for handLms in self.results.multi_hand_landmarks:
+            for handLms in self.handLandmarks:
                 # Convert normalized landmarks to pixel points and draw the custom overlay
-                points = [(int(lm.x * w), int(lm.y * h)) for lm in handLms.landmark]
-                depths = [lm.z for lm in handLms.landmark]
+                points = [(int(lm.x * w), int(lm.y * h)) for lm in handLms]
+                depths = [lm.z for lm in handLms]
                 drawHandStyle(img, points, depths)
         # Return the modified image
         return img
@@ -133,11 +174,11 @@ class HandDetector:
         # Create an empty list to store landmarks
         self.lmList = []
         # Check if hands were detected
-        if self.results.multi_hand_landmarks:
+        if self.handLandmarks:
             # Get the requested hand (default is index 0)
-            myHand = self.results.multi_hand_landmarks[handNo]
+            myHand = self.handLandmarks[handNo]
             # Enumerate through all 21 landmarks of the hand
-            for id, lm in enumerate(myHand.landmark):
+            for id, lm in enumerate(myHand):
                 # Get the height, width, and channels of the image
                 h, w, _c = img.shape
                 # Convert normalized coordinates to pixel coordinates
@@ -155,13 +196,13 @@ class HandDetector:
         # List to store information about all detected hands
         hands_info = []
         # Check if any hands were detected
-        if self.results.multi_hand_landmarks:
+        if self.handLandmarks:
             # Iterate through all detected hands
-            for i, handLms in enumerate(self.results.multi_hand_landmarks):
+            for i, handLms in enumerate(self.handLandmarks):
                 # Get the dimensions of the image
                 h, w, _c = img.shape
                 # Get the X-coordinate of the wrist (landmark 0) to determine hand position
-                wrist_x = int(handLms.landmark[0].x * w)
+                wrist_x = int(handLms[0].x * w)
 
                 # Since the image is horizontally flipped (mirror), left physical hand is on the left
                 # Assign hand type based on its position on the screen
@@ -172,7 +213,7 @@ class HandDetector:
 
                 # Extract landmark coordinates for this hand
                 lmList = []
-                for id, lm in enumerate(handLms.landmark):
+                for id, lm in enumerate(handLms):
                     h, w, _c = img.shape
                     # Convert normalized coordinates (0.0 - 1.0) to pixel coordinates
                     cx, cy = int(lm.x * w), int(lm.y * h)

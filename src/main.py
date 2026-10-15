@@ -77,6 +77,7 @@ def main():
         )
     finally:
         cap.release()
+        detector.close()
         cv2.destroyAllWindows()
         for f in (latency_file, transfer_file):
             if f is not None:
