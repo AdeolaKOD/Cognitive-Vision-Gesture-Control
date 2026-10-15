@@ -1,7 +1,7 @@
 import csv
-import io
 import math
 import os
+import sys
 import time
 
 import cv2
@@ -14,61 +14,104 @@ from VolumeControl import VolumeControl
 # Webcam capture resolution
 wCam, hCam = 640, 480
 
+# Telemetry CSVs go to <project root>/testResult, next to the exe when frozen
+if getattr(sys, "frozen", False):
+    PROJECT_ROOT = os.path.dirname(sys.executable)
+else:
+    PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+RESULT_DIR = os.path.join(PROJECT_ROOT, "testResult")
+
+LATENCY_HEADER = [
+    "Acquisition",
+    "Pre-processing",
+    "Inference",
+    "Logic",
+    "Actuation",
+    "Display",
+]
+
+
+def open_telemetry(name, header):
+    """Open a telemetry CSV for writing; returns (file, writer) or (None, None)."""
+    try:
+        os.makedirs(RESULT_DIR, exist_ok=True)
+        f = open(os.path.join(RESULT_DIR, name), "w", newline="")
+    except OSError as e:
+        # Telemetry is optional: never stop the app because the folder is read-only
+        print(f"Telemetry disabled for {name}: {e}")
+        return None, None
+    writer = csv.writer(f)
+    writer.writerow(header)
+    return f, writer
+
 
 def main():
     cap = cv2.VideoCapture(0)
     cap.set(3, wCam)  # CAP_PROP_FRAME_WIDTH
     cap.set(4, hCam)  # CAP_PROP_FRAME_HEIGHT
-    pTime = 0
 
     detector = hd.HandDetector(detectionCon=0.7, maxHands=2)
     vol_ctrl = VolumeControl()
     bright_ctrl = BrightnessControl()
     media_ctrl = MediaControl()
 
-    # Seed the UI bars from the current system state
-    volBar, volPer = vol_ctrl.get_volume_state()
-    brightBar, brightPer = bright_ctrl.get_brightness_state()
-
     # Resizable so it can be snapped side-by-side with other apps
     cv2.namedWindow("Gesture Control", cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
 
     # Telemetry output files
-    os.makedirs("testResult", exist_ok=True)
-    with open("../testResult/latency_data.csv", "r", newline="") as file:
-        latency_file = file.read()
-    latency_writer = io.StringIO(latency_file)
-    latency_writer = csv.writer(latency_writer)
-    latency_writer.writerow(
-        ["Acquisition", "Pre-processing", "Inference", "Logic", "Actuation"]
+    latency_file, latency_writer = open_telemetry("latency_data.csv", LATENCY_HEADER)
+    transfer_file, transfer_writer = open_telemetry(
+        "transfer_data.csv", ["Distance", "Percentage"]
     )
 
-    with open("../testResult/transfer_data.csv", "r", newline="") as file:
-        transfer_file_str = file.read()
-        transfer_files = io.StringIO(transfer_file_str)
-    transfer_file = transfer_files
-    transfer_writer = csv.writer(transfer_file)
-    transfer_writer.writerow(["Distance", "Percentage"])
+    try:
+        run_loop(
+            cap,
+            detector,
+            vol_ctrl,
+            bright_ctrl,
+            media_ctrl,
+            latency_writer,
+            transfer_writer,
+        )
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+        for f in (latency_file, transfer_file):
+            if f is not None:
+                f.close()
+
+
+def run_loop(
+    cap, detector, vol_ctrl, bright_ctrl, media_ctrl, latency_writer, transfer_writer
+):
+    pTime = 0
+
+    # Seed the UI bars from the current system state
+    volBar, volPer = vol_ctrl.get_volume_state()
+    brightBar, brightPer = bright_ctrl.get_brightness_state()
 
     while True:
         # Acquisition
-        t0 = time.time()
+        t0 = time.perf_counter()
         success, img = cap.read()
         if not success:
             print("Failed to read webcam")
             break
 
         # Pre-processing: mirror so the left hand appears on the left of the screen
-        t1 = time.time()
+        t1 = time.perf_counter()
         img = cv2.flip(img, 1)
-        t2 = time.time()
+        t2 = time.perf_counter()
 
         # Inference: detect hands, landmarks and Left/Right classification
+        # (findHands also does the BGR->RGB conversion and draws the landmark overlay)
         img = detector.findHands(img)
         hands_info = detector.findHandsInfo(img, draw=False)
-        t3 = time.time()
+        t3 = time.perf_counter()
 
-        # Logic
+        # Logic; time spent in OS calls is summed separately as actuation
+        actuation = 0.0
         for hand in hands_info:
             handType = hand["type"]
             lmList = hand["lmList"]
@@ -86,6 +129,7 @@ def main():
                     )  # Calculate the Euclidean distance between Thumb and Index
                     # Pass the data to the MediaControl module to process gestures
                     media_ctrl.process_gestures(img, length, cx, cy)
+                    actuation += media_ctrl.actuation_time
 
                 # Right hand: volume and brightness
                 elif handType == "Right":
@@ -112,10 +156,13 @@ def main():
                             img, (x_thumb, y_thumb), (x_index, y_index), (0, 255, 0), 3
                         )
 
+                        ta = time.perf_counter()
                         volBar, volPer = vol_ctrl.set_volume(length_vol)
+                        actuation += time.perf_counter() - ta
 
                         # Telemetry: transfer function (distance -> volume %)
-                        transfer_writer.writerow([length_vol, volPer])
+                        if transfer_writer:
+                            transfer_writer.writerow([length_vol, volPer])
 
                     # Brightness clutch: index, middle, ring and pinky all up
                     elif (
@@ -137,10 +184,14 @@ def main():
                             cv2.FILLED,
                         )
 
+                        ta = time.perf_counter()
                         brightBar, brightPer = bright_ctrl.set_brightness(palm_size)
+                        actuation += time.perf_counter() - ta
 
-        # FPS
-        cTime = time.time()
+        t4 = time.perf_counter()
+
+        # Display: FPS, HUD bars and the preview window
+        cTime = time.perf_counter()
         fps = 1 / (cTime - pTime) if (cTime - pTime) > 0 else 0
         pTime = cTime
 
@@ -187,34 +238,29 @@ def main():
         )
 
         img_display = cv2.resize(img, (1280, 960))
-        t4 = time.time()
-
-        # Actuation
         cv2.imshow("Gesture Control", img_display)
-        t5 = time.time()
+        key = cv2.waitKey(1) & 0xFF  # waitKey is what actually paints the window
+        t5 = time.perf_counter()
 
         # Telemetry: per-stage latency in ms
-        latency_writer.writerow(
-            [
-                (t1 - t0) * 1000,
-                (t2 - t1) * 1000,
-                (t3 - t2) * 1000,
-                (t4 - t3) * 1000,
-                (t5 - t4) * 1000,
-            ]
-        )
+        if latency_writer:
+            latency_writer.writerow(
+                [
+                    (t1 - t0) * 1000,
+                    (t2 - t1) * 1000,
+                    (t3 - t2) * 1000,
+                    (t4 - t3 - actuation) * 1000,
+                    actuation * 1000,
+                    (t5 - t4) * 1000,
+                ]
+            )
 
         # Exit on 'q' or when the window is closed
-        key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
             break
 
         if cv2.getWindowProperty("Gesture Control", cv2.WND_PROP_VISIBLE) < 1:
             break
-
-    cap.release()
-    cv2.destroyAllWindows()
-    transfer_file.close()
 
 
 if __name__ == "__main__":

@@ -27,11 +27,20 @@ class MediaControl:
         self.touch_start_time = 0
         # Boolean state indicating if a scrub gesture is actively happening
         self.is_scrubbing = False
+        # Seconds spent sending key presses in the last call (for latency telemetry)
+        self.actuation_time = 0.0
+
+    # Send a key press and add the time it took to the actuation total
+    def _press(self, key):
+        start = time.perf_counter()
+        pyautogui.press(key)
+        self.actuation_time += time.perf_counter() - start
 
     # Main method to process incoming hand data and determine if a gesture occurred
     def process_gestures(self, img, length, cx, cy):
         # Get the current time for evaluating gesture durations
         current_time = time.time()
+        self.actuation_time = 0.0
 
         # When fingers are pinching (touching) based on distance threshold
         if length < self.tap_threshold_dist:
@@ -66,7 +75,7 @@ class MediaControl:
                         # If hand moved right, fast-forward
                         if dx > 25:
                             # Simulate right arrow key press to skip forward
-                            pyautogui.press("right")
+                            self._press("right")
                             # Display "Forward" text on the screen for user feedback
                             cv2.putText(
                                 img,
@@ -84,7 +93,7 @@ class MediaControl:
                         # If hand moved left, rewind
                         elif dx < -25:
                             # Simulate left arrow key press to rewind
-                            pyautogui.press("left")
+                            self._press("left")
                             # Display "Rewind" text on the screen
                             cv2.putText(
                                 img,
@@ -124,7 +133,7 @@ class MediaControl:
                     # If two consecutive taps are detected
                     if self.tap_count == 2:
                         # Simulate media play/pause key
-                        pyautogui.press("playpause")
+                        self._press("playpause")
                         # Display "Play/Pause" text on screen for feedback
                         cv2.putText(
                             img,
