@@ -17,7 +17,7 @@ def plot_latency_breakdown():
     process = subprocess.Popen([sys.executable, main_script], cwd=project_root)
     process.wait()
 
-    layers = ['Acquisition', 'Pre-processing', 'Inference', 'Logic', 'Actuation']
+    layers = ['Acquisition', 'Pre-processing', 'Inference', 'Logic', 'Actuation', 'Display']
     
     csv_path = os.path.join(project_root, 'testResult', 'latency_data.csv')
     if not os.path.exists(csv_path):
@@ -25,16 +25,16 @@ def plot_latency_breakdown():
         return
 
     # To calculate the mean latency of each layer
-    layer_totals = [0.0] * 5
+    layer_totals = [0.0] * len(layers)
     row_count = 0
 
     with open(csv_path, 'r') as f:
         reader = csv.reader(f)
         next(reader, None) # Skip header
         for row in reader:
-            if len(row) == 5:
+            if len(row) == len(layers):
                 try:
-                    for i in range(5):
+                    for i in range(len(layers)):
                         layer_totals[i] += float(row[i])
                     row_count += 1
                 except ValueError:

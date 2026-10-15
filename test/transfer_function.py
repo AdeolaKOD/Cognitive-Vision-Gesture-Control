@@ -20,7 +20,7 @@ def plot_transfer_function():
     
     # Read the data
     theoretical_pixels = np.linspace(0, 250, 500)
-    theoretical_scalar = np.interp(theoretical_pixels, [45, 205], [0, 100])
+    theoretical_scalar = np.interp(theoretical_pixels, [50, 200], [0, 100])  # Same range as VolumeControl.set_volume
     
     recorded_pixels = []
     recorded_scalar = []
