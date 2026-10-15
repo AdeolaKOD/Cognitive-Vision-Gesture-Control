@@ -7,6 +7,7 @@ import time
 import cv2
 
 import HandTrackingModule as hd
+import Hud as hud
 from BrightnessControl import BrightnessControl
 from MediaControl import MediaControl
 from VolumeControl import VolumeControl
@@ -150,11 +151,7 @@ def run_loop(
                     ):
                         length_vol = math.hypot(x_index - x_thumb, y_index - y_thumb)
 
-                        cv2.circle(img, (x_thumb, y_thumb), 10, (0, 255, 0), cv2.FILLED)
-                        cv2.circle(img, (x_index, y_index), 10, (0, 255, 0), cv2.FILLED)
-                        cv2.line(
-                            img, (x_thumb, y_thumb), (x_index, y_index), (0, 255, 0), 3
-                        )
+                        hud.drawPinch(img, (x_thumb, y_thumb), (x_index, y_index))
 
                         ta = time.perf_counter()
                         volBar, volPer = vol_ctrl.set_volume(length_vol)
@@ -176,13 +173,7 @@ def run_loop(
                         palm_size = math.hypot(x_mid_mcp - x_wrist, y_mid_mcp - y_wrist)
 
                         cx_palm, cy_palm = lmList[9][1], lmList[9][2]
-                        cv2.circle(
-                            img,
-                            (cx_palm, cy_palm),
-                            int(palm_size / 4),
-                            (255, 255, 0),
-                            cv2.FILLED,
-                        )
+                        hud.drawPalmRing(img, (cx_palm, cy_palm), int(palm_size / 4))
 
                         ta = time.perf_counter()
                         brightBar, brightPer = bright_ctrl.set_brightness(palm_size)
@@ -195,47 +186,9 @@ def run_loop(
         fps = 1 / (cTime - pTime) if (cTime - pTime) > 0 else 0
         pTime = cTime
 
-        cv2.putText(
-            img,
-            f"FPS: {int(fps)}",
-            (40, 50),
-            cv2.FONT_HERSHEY_COMPLEX,
-            1,
-            (255, 0, 0),
-            3,
-        )
-
-        # Brightness bar (left)
-        cv2.rectangle(img, (50, 150), (85, 400), (255, 255, 0), 3)
-        cv2.rectangle(img, (50, int(brightBar)), (85, 400), (255, 255, 0), cv2.FILLED)
-        cv2.putText(
-            img,
-            f"{int(brightPer)} %",
-            (40, 450),
-            cv2.FONT_HERSHEY_COMPLEX,
-            1,
-            (255, 255, 0),
-            3,
-        )
-        cv2.putText(
-            img, "Bright", (40, 140), cv2.FONT_HERSHEY_COMPLEX, 0.7, (255, 255, 0), 2
-        )
-
-        # Volume bar (right)
-        cv2.rectangle(img, (550, 150), (585, 400), (0, 255, 0), 3)
-        cv2.rectangle(img, (550, int(volBar)), (585, 400), (0, 255, 0), cv2.FILLED)
-        cv2.putText(
-            img,
-            f"{int(volPer)} %",
-            (540, 450),
-            cv2.FONT_HERSHEY_COMPLEX,
-            1,
-            (0, 255, 0),
-            3,
-        )
-        cv2.putText(
-            img, "Vol", (540, 140), cv2.FONT_HERSHEY_COMPLEX, 0.7, (0, 255, 0), 2
-        )
+        hud.drawFps(img, fps)
+        hud.drawLevelBar(img, 50, "Bright", brightPer)
+        hud.drawLevelBar(img, 560, "Vol", volPer)
 
         img_display = cv2.resize(img, (1280, 960))
         cv2.imshow("Gesture Control", img_display)
