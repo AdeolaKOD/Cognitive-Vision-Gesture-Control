@@ -13,11 +13,11 @@ import numpy as np
 
 
 # Hand overlay style (colours are BGR)
-RING_COLOR = (255, 255, 255)  # White outer ring of each joint
-RING_HOLE_COLOR = (170, 170, 170)  # Grey centre that makes the ring look like a donut
-KNUCKLE_COLOR = (190, 190, 190)  # Small grey dots at the base of the fingers
-BONE_COLOR = (215, 215, 215)  # Soft light-grey lines along the fingers
-PALM_COLOR = (40, 40, 40)  # Dark V-shaped outline of the palm
+RING_COLOR = (255, 255, 255)  # Near joints: white ring
+RING_HOLE_COLOR = (150, 150, 150)  # Grey centre that makes the ring hollow
+BONE_COLOR = (225, 225, 225)  # Near bones: light grey
+FAR_COLOR = (45, 45, 45)  # Far joints and bones fade to this dark grey
+PALM_COLOR = (30, 30, 30)  # Thin dark V-shaped outline of the palm
 
 # Finger chains from base to tip (thumb, index, middle, ring, pinky)
 FINGER_CHAINS = [
@@ -27,41 +27,55 @@ FINGER_CHAINS = [
     (13, 14, 15, 16),
     (17, 18, 19, 20),
 ]
-# Light line across the knuckles and from the wrist to the thumb base
+# Lines across the knuckles and from the wrist to the thumb base
 KNUCKLE_LINKS = [(0, 1), (5, 9), (9, 13), (13, 17)]
-# Dark V from the wrist to the index and pinky knuckles
-PALM_V = [(5, 0), (0, 17)]
-# Ring size per joint relative to the hand size: bigger at the tips, smaller further down
-JOINT_SCALE = {}
+# Joint size relative to the hand size: tips biggest, knuckles and wrist smallest
+JOINT_SCALE = {0: 0.05, 1: 0.05, 5: 0.05, 9: 0.05, 13: 0.05, 17: 0.05}
 for _chain in FINGER_CHAINS:
-    for _joint, _scale in zip(_chain[1:], (0.10, 0.12, 0.15)):
+    for _joint, _scale in zip(_chain[1:], (0.08, 0.10, 0.13)):
         JOINT_SCALE[_joint] = _scale
 
 
-def drawHandStyle(img, points):
-    """Draw one hand as white donut joints, light finger bones and a dark palm V."""
+def _mix(far, near, t):
+    return tuple(int(f + (n - f) * t) for f, n in zip(far, near))
+
+
+def drawHandStyle(img, points, depths=None):
+    """Draw one hand like MediaPipe's demo: near joints are big white rings,
+    far ones shrink into dark dots, with a thin dark V across the palm.
+
+    points: 21 (x, y) pixel tuples. depths: 21 MediaPipe z values (negative is
+    closer to the camera than the wrist); without them every joint is drawn as near.
+    """
     # Hand size (wrist to middle knuckle) keeps the overlay proportional at any distance
     handSize = math.hypot(points[9][0] - points[0][0], points[9][1] - points[0][1])
     lineW = max(1, int(handSize * 0.025))
-    palmW = max(2, int(handSize * 0.035))
+
+    # Nearness per joint in 0..1, measured in hand lengths so it works at any distance
+    if depths is None:
+        near = [1.0] * 21
+    else:
+        scale = max(handSize / img.shape[1], 1e-3)  # z shares the x scale
+        near = [min(1.0, max(0.0, 0.5 - z / scale * 1.5)) for z in depths]
 
     # Bones first so the joints sit on top of them
     for chain in FINGER_CHAINS:
         for a, b in zip(chain, chain[1:]):
-            cv2.line(img, points[a], points[b], BONE_COLOR, lineW, cv2.LINE_AA)
+            c = _mix(FAR_COLOR, BONE_COLOR, (near[a] + near[b]) / 2)
+            cv2.line(img, points[a], points[b], c, lineW, cv2.LINE_AA)
     for a, b in KNUCKLE_LINKS:
-        cv2.line(img, points[a], points[b], BONE_COLOR, lineW, cv2.LINE_AA)
+        c = _mix(FAR_COLOR, BONE_COLOR, (near[a] + near[b]) / 2)
+        cv2.line(img, points[a], points[b], c, lineW, cv2.LINE_AA)
     cv2.polylines(img, [np.array([points[5], points[0], points[17]])], False,
-                  PALM_COLOR, palmW, cv2.LINE_AA)
+                  PALM_COLOR, lineW + 1, cv2.LINE_AA)
 
-    # Knuckles and wrist are small dots, the finger joints are donut rings
-    dotR = max(2, int(handSize * 0.04))
-    for i in (0, 1, 5, 9, 13, 17):
-        cv2.circle(img, points[i], dotR, KNUCKLE_COLOR, cv2.FILLED, cv2.LINE_AA)
-    for i, scale in JOINT_SCALE.items():
-        r = max(3, int(handSize * scale))
-        cv2.circle(img, points[i], r, RING_COLOR, cv2.FILLED, cv2.LINE_AA)
-        cv2.circle(img, points[i], max(1, r // 3), RING_HOLE_COLOR, cv2.FILLED, cv2.LINE_AA)
+    # Joints: size and colour follow nearness, and only near ones get the hollow centre
+    for i, base in JOINT_SCALE.items():
+        t = near[i]
+        r = max(2, int(handSize * base * (0.4 + 0.8 * t)))
+        cv2.circle(img, points[i], r, _mix(FAR_COLOR, RING_COLOR, t), cv2.FILLED, cv2.LINE_AA)
+        if t > 0.5 and r >= 5:
+            cv2.circle(img, points[i], max(1, r // 3), RING_HOLE_COLOR, cv2.FILLED, cv2.LINE_AA)
     return img
 
 
@@ -109,7 +123,8 @@ class HandDetector:
             for handLms in self.results.multi_hand_landmarks:
                 # Convert normalized landmarks to pixel points and draw the custom overlay
                 points = [(int(lm.x * w), int(lm.y * h)) for lm in handLms.landmark]
-                drawHandStyle(img, points)
+                depths = [lm.z for lm in handLms.landmark]
+                drawHandStyle(img, points, depths)
         # Return the modified image
         return img
 
