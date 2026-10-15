@@ -4,11 +4,65 @@ import math
 
 import cv2
 import mediapipe as mp
+import numpy as np
 
 # Import MediaPipe for hand tracking machine learning models
 
 
 # Explicitly import the submodules so IDEs and PyInstaller can resolve them reliably
+
+
+# Hand overlay style (colours are BGR)
+RING_COLOR = (255, 255, 255)  # White outer ring of each joint
+RING_HOLE_COLOR = (170, 170, 170)  # Grey centre that makes the ring look like a donut
+KNUCKLE_COLOR = (190, 190, 190)  # Small grey dots at the base of the fingers
+BONE_COLOR = (215, 215, 215)  # Soft light-grey lines along the fingers
+PALM_COLOR = (40, 40, 40)  # Dark V-shaped outline of the palm
+
+# Finger chains from base to tip (thumb, index, middle, ring, pinky)
+FINGER_CHAINS = [
+    (1, 2, 3, 4),
+    (5, 6, 7, 8),
+    (9, 10, 11, 12),
+    (13, 14, 15, 16),
+    (17, 18, 19, 20),
+]
+# Light line across the knuckles and from the wrist to the thumb base
+KNUCKLE_LINKS = [(0, 1), (5, 9), (9, 13), (13, 17)]
+# Dark V from the wrist to the index and pinky knuckles
+PALM_V = [(5, 0), (0, 17)]
+# Ring size per joint relative to the hand size: bigger at the tips, smaller further down
+JOINT_SCALE = {}
+for _chain in FINGER_CHAINS:
+    for _joint, _scale in zip(_chain[1:], (0.10, 0.12, 0.15)):
+        JOINT_SCALE[_joint] = _scale
+
+
+def drawHandStyle(img, points):
+    """Draw one hand as white donut joints, light finger bones and a dark palm V."""
+    # Hand size (wrist to middle knuckle) keeps the overlay proportional at any distance
+    handSize = math.hypot(points[9][0] - points[0][0], points[9][1] - points[0][1])
+    lineW = max(1, int(handSize * 0.025))
+    palmW = max(2, int(handSize * 0.035))
+
+    # Bones first so the joints sit on top of them
+    for chain in FINGER_CHAINS:
+        for a, b in zip(chain, chain[1:]):
+            cv2.line(img, points[a], points[b], BONE_COLOR, lineW, cv2.LINE_AA)
+    for a, b in KNUCKLE_LINKS:
+        cv2.line(img, points[a], points[b], BONE_COLOR, lineW, cv2.LINE_AA)
+    cv2.polylines(img, [np.array([points[5], points[0], points[17]])], False,
+                  PALM_COLOR, palmW, cv2.LINE_AA)
+
+    # Knuckles and wrist are small dots, the finger joints are donut rings
+    dotR = max(2, int(handSize * 0.04))
+    for i in (0, 1, 5, 9, 13, 17):
+        cv2.circle(img, points[i], dotR, KNUCKLE_COLOR, cv2.FILLED, cv2.LINE_AA)
+    for i, scale in JOINT_SCALE.items():
+        r = max(3, int(handSize * scale))
+        cv2.circle(img, points[i], r, RING_COLOR, cv2.FILLED, cv2.LINE_AA)
+        cv2.circle(img, points[i], max(1, r // 3), RING_HOLE_COLOR, cv2.FILLED, cv2.LINE_AA)
+    return img
 
 
 # Define a class for detecting and tracking hands
@@ -38,8 +92,6 @@ class HandDetector:
             self.detectionCon,
             self.trackCon,
         )
-        # Access MediaPipe's drawing utilities for rendering landmarks
-        self.mpDraw = mp.solutions.drawing_utils  # pyright: ignore[reportAttributeAccessIssue]
         # Landmark IDs for the tips of the 5 fingers (Thumb, Index, Middle, Ring, Pinky)
         self.tipIds = [4, 8, 12, 16, 20]
 
@@ -50,15 +102,14 @@ class HandDetector:
         # Process the image and get hand detection results
         self.results = self.hands.process(imgRGB)
 
-        # If hands are detected in the frame
-        if self.results.multi_hand_landmarks:
+        # If hands are detected in the frame and drawing is enabled
+        if draw and self.results.multi_hand_landmarks:
+            h, w, _c = img.shape
             # Iterate through each detected hand
             for handLms in self.results.multi_hand_landmarks:
-                # If drawing is enabled, draw the connections and landmarks
-                if draw:
-                    self.mpDraw.draw_landmarks(
-                        img, handLms, self.mpHands.HAND_CONNECTIONS
-                    )
+                # Convert normalized landmarks to pixel points and draw the custom overlay
+                points = [(int(lm.x * w), int(lm.y * h)) for lm in handLms.landmark]
+                drawHandStyle(img, points)
         # Return the modified image
         return img
 
